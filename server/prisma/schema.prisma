@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Account {
+  id             String   @id @default(uuid())
+  name           String
+  type           String   // "customer" | "prospect"
+  industry       String
+  companySize    String
+  employeeCount  Int
+  subregion      String
+  state          String
+  city           String
+  accountOwner   String
+  accountTier    String
+  createdAt      DateTime @default(now())
+
+  customerMetrics  CustomerMetrics?
+  prospectMetrics  ProspectMetrics?
+  productUsage     ProductUsage[]
+  priorityActions  PriorityAction[]
+}
+
+model CustomerMetrics {
+  id                   String   @id @default(uuid())
+  accountId            String   @unique
+  account              Account  @relation(fields: [accountId], references: [id])
+  arr                  Float
+  arrPriorYear         Float
+  arrGrowthPct         Float
+  renewalDate          DateTime
+  renewalRiskScore     Float?
+  expansionScore       Float?
+  healthScore          Float?
+  hasExecutiveSponsor  Boolean
+  stakeholderCount     Int
+  lastActivityDate     DateTime
+  accountHealth        String   // "healthy" | "at_risk" | "declining" | "churned"
+}
+
+model ProspectMetrics {
+  id                      String   @id @default(uuid())
+  accountId               String   @unique
+  account                 Account  @relation(fields: [accountId], references: [id])
+  icpScore                Float
+  estimatedContractValue  Float
+  pipelineStage           String
+  opportunityValue        Float
+  opportunityCreatedDate  DateTime
+  lastActivityDate        DateTime
+  daysSinceActivity       Int
+  isStalled               Boolean
+  priorityScore           Float?
+}
+
+model ProductUsage {
+  id                  String   @id @default(uuid())
+  accountId           String
+  account             Account  @relation(fields: [accountId], references: [id])
+  module              String
+  seatsPurchased      Int
+  activeSeats         Int
+  monthlyActiveUsers  Int
+  loginFrequency      Float
+  featureAdoptionPct  Float
+  usageTrend          String   // "growing" | "stable" | "declining"
+  lastActiveDate      DateTime
+  supportTicketCount  Int
+  adoptionStatus      String   // "healthy" | "underutilized" | "at_risk"
+}
+
+model PriorityAction {
+  id               String   @id @default(uuid())
+  accountId        String
+  account          Account  @relation(fields: [accountId], references: [id])
+  priorityScore    Float
+  primaryAction    String
+  secondaryAction  String?
+  reason           String
+  opportunityValue Float?
+  revenueAtRisk    Float?
+  scoreBreakdown   Json?
+  generatedAt      DateTime @default(now())
+}
