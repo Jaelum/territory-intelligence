@@ -1100,6 +1100,336 @@ function PipelinePage({ accounts }) {
 }
 
 // ── APP SHELL ──────────────────────────────────────────────────────────────
+function SegmentsPage({ accounts }) {
+  const customers = accounts.filter((a) => a.type === "customer");
+  const prospects = accounts.filter((a) => a.type === "prospect");
+  const fmt = (n) =>
+    "$" +
+    (n >= 1000000
+      ? (n / 1000000).toFixed(1) + "M"
+      : n >= 1000
+        ? (n / 1000).toFixed(0) + "k"
+        : Math.round(n));
+
+  // ARR by subregion
+  const regionMap = {};
+  customers.forEach((a) => {
+    if (!regionMap[a.subregion])
+      regionMap[a.subregion] = { arr: 0, customers: 0, atRisk: 0, healthy: 0 };
+    regionMap[a.subregion].arr += a.customerMetrics?.arr || 0;
+    regionMap[a.subregion].customers++;
+    if (a.customerMetrics?.accountHealth === "at_risk")
+      regionMap[a.subregion].atRisk++;
+    if (a.customerMetrics?.accountHealth === "healthy")
+      regionMap[a.subregion].healthy++;
+  });
+  const regionData = Object.entries(regionMap)
+    .map(([name, d]) => ({
+      name,
+      ...d,
+      arrM: parseFloat((d.arr / 1000000).toFixed(2)),
+    }))
+    .sort((a, b) => b.arr - a.arr);
+
+  // Industry breakdown
+  const industryMap = {};
+  customers.forEach((a) => {
+    if (!industryMap[a.industry])
+      industryMap[a.industry] = {
+        arr: 0,
+        customers: 0,
+        atRisk: 0,
+        expansion: 0,
+      };
+    industryMap[a.industry].arr += a.customerMetrics?.arr || 0;
+    industryMap[a.industry].customers++;
+    if (
+      a.customerMetrics?.accountHealth === "at_risk" ||
+      a.customerMetrics?.accountHealth === "declining"
+    )
+      industryMap[a.industry].atRisk++;
+    if ((a.customerMetrics?.expansionScore || 0) > 60)
+      industryMap[a.industry].expansion++;
+  });
+
+  // Prospect count by industry for penetration
+  const prospectIndustryMap = {};
+  prospects.forEach((a) => {
+    if (!prospectIndustryMap[a.industry]) prospectIndustryMap[a.industry] = 0;
+    prospectIndustryMap[a.industry]++;
+  });
+
+  const industryData = Object.entries(industryMap)
+    .map(([name, d]) => ({
+      name,
+      ...d,
+      arrM: parseFloat((d.arr / 1000000).toFixed(2)),
+      riskPct: Math.round((d.atRisk / d.customers) * 100),
+      expansionPct: Math.round((d.expansion / d.customers) * 100),
+      prospects: prospectIndustryMap[name] || 0,
+      penetration: Math.round(
+        (d.customers / (d.customers + (prospectIndustryMap[name] || 0))) * 100,
+      ),
+    }))
+    .sort((a, b) => b.arr - a.arr);
+
+  const REGION_COLORS = ["#185FA5", "#0F6E56", "#534AB7", "#993C1D", "#EF9F27"];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Region Overview */}
+      <Card title="ARR by Subregion" subtitle="Western US territory">
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(5, 1fr)",
+            gap: 12,
+            marginBottom: 16,
+          }}
+        >
+          {regionData.map((r, i) => (
+            <div
+              key={r.name}
+              style={{
+                background: "#0e0e0e",
+                borderRadius: 10,
+                padding: "12px 14px",
+                borderLeft: `3px solid ${REGION_COLORS[i]}`,
+              }}
+            >
+              <div style={{ fontSize: 11, color: "#555", marginBottom: 6 }}>
+                {r.name}
+              </div>
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 600,
+                  color: "#fff",
+                  marginBottom: 4,
+                }}
+              >
+                {fmt(r.arr)}
+              </div>
+              <div style={{ fontSize: 11, color: "#777" }}>
+                {r.customers} customers
+              </div>
+              <div style={{ fontSize: 11, color: "#e24b4a", marginTop: 2 }}>
+                {r.atRisk} at risk
+              </div>
+            </div>
+          ))}
+        </div>
+        <ResponsiveContainer width="100%" height={160}>
+          <BarChart data={regionData}>
+            <XAxis
+              dataKey="name"
+              tick={{ fontSize: 10, fill: "#777" }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis
+              tick={{ fontSize: 10, fill: "#555" }}
+              tickFormatter={(v) => `$${v}M`}
+              axisLine={false}
+              tickLine={false}
+            />
+            <Tooltip
+              formatter={(v) => [`$${v}M`, "ARR"]}
+              contentStyle={{
+                background: "#1a1a1a",
+                border: "1px solid #333",
+                fontSize: 11,
+                borderRadius: 8,
+              }}
+            />
+            <Bar dataKey="arrM" radius={[4, 4, 0, 0]}>
+              {regionData.map((_, i) => (
+                <Cell key={i} fill={REGION_COLORS[i]} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </Card>
+
+      {/* Industry Intelligence */}
+      <Card
+        title="Industry Intelligence"
+        subtitle="Penetration, risk, and expansion by vertical"
+      >
+        <table
+          style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}
+        >
+          <thead>
+            <tr style={{ borderBottom: "1px solid #222" }}>
+              {[
+                "Industry",
+                "ARR",
+                "Customers",
+                "Prospects",
+                "Penetration",
+                "At Risk",
+                "Expansion Ready",
+              ].map((h) => (
+                <th
+                  key={h}
+                  style={{
+                    padding: "8px 10px",
+                    textAlign: "left",
+                    fontSize: 10,
+                    color: "#444",
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {industryData.map((ind) => (
+              <tr key={ind.name} style={{ borderBottom: "1px solid #1c1c1c" }}>
+                <td
+                  style={{
+                    padding: "10px 10px",
+                    fontWeight: 500,
+                    color: "#e0e0e0",
+                  }}
+                >
+                  {ind.name}
+                </td>
+                <td
+                  style={{
+                    padding: "10px 10px",
+                    fontWeight: 500,
+                    color: "#ccc",
+                  }}
+                >
+                  {fmt(ind.arr)}
+                </td>
+                <td style={{ padding: "10px 10px", color: "#777" }}>
+                  {ind.customers}
+                </td>
+                <td style={{ padding: "10px 10px", color: "#777" }}>
+                  {ind.prospects}
+                </td>
+                <td style={{ padding: "10px 10px" }}>
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 6 }}
+                  >
+                    <div
+                      style={{
+                        flex: 1,
+                        height: 4,
+                        background: "#2a2a2a",
+                        borderRadius: 2,
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${ind.penetration}%`,
+                          height: "100%",
+                          background: "#185FA5",
+                          borderRadius: 2,
+                        }}
+                      />
+                    </div>
+                    <span style={{ fontSize: 11, color: "#ccc", minWidth: 32 }}>
+                      {ind.penetration}%
+                    </span>
+                  </div>
+                </td>
+                <td style={{ padding: "10px 10px" }}>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: ind.riskPct > 30 ? "#e24b4a" : "#777",
+                    }}
+                  >
+                    {ind.riskPct}%
+                  </span>
+                </td>
+                <td style={{ padding: "10px 10px" }}>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: ind.expansionPct > 30 ? "#7bc142" : "#777",
+                    }}
+                  >
+                    {ind.expansion} accounts
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+
+      {/* White Space */}
+      <Card
+        title="White Space Analysis"
+        subtitle="Industries with highest untapped potential"
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: 12,
+          }}
+        >
+          {industryData
+            .sort((a, b) => a.penetration - b.penetration)
+            .slice(0, 6)
+            .map((ind) => (
+              <div
+                key={ind.name}
+                style={{
+                  background: "#0e0e0e",
+                  borderRadius: 10,
+                  padding: "14px 16px",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: "#e0e0e0",
+                    marginBottom: 8,
+                  }}
+                >
+                  {ind.name}
+                </div>
+                <div style={{ fontSize: 11, color: "#555", marginBottom: 10 }}>
+                  {ind.penetration}% penetrated · {ind.prospects} prospects
+                </div>
+                <div
+                  style={{
+                    height: 4,
+                    background: "#2a2a2a",
+                    borderRadius: 2,
+                    marginBottom: 8,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${ind.penetration}%`,
+                      height: "100%",
+                      background: "#534AB7",
+                      borderRadius: 2,
+                    }}
+                  />
+                </div>
+                <div style={{ fontSize: 11, color: "#7bc142" }}>
+                  ↑ {100 - ind.penetration}% white space
+                </div>
+              </div>
+            ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
 
 export default function App() {
   const [accounts, setAccounts] = useState([]);
@@ -1142,7 +1472,13 @@ export default function App() {
       </div>
     );
 
-  const pages = ["Overview", "Accounts", "Pipeline", "Priority Actions"];
+  const pages = [
+    "Overview",
+    "Accounts",
+    "Pipeline",
+    "Priority Actions",
+    "Segments",
+  ];
 
   return (
     <div
@@ -1215,6 +1551,7 @@ export default function App() {
         {page === "Accounts" && <AccountsPage accounts={accounts} />}
         {page === "Pipeline" && <PipelinePage accounts={accounts} />}
         {page === "Priority Actions" && <PriorityPage accounts={accounts} />}
+        {page === "Segments" && <SegmentsPage accounts={accounts} />}
       </div>
     </div>
   );
