@@ -884,7 +884,9 @@ export default function App() {
   const [page, setPage] = useState("Overview");
 
   useEffect(() => {
-    fetch("http://localhost:3001/api/accounts")
+    fetch(
+      "https://territory-intelligence-production-1500.up.railway.app/api/accounts",
+    )
       .then((res) => res.json())
       .then((data) => {
         setAccounts(data);
@@ -892,7 +894,9 @@ export default function App() {
       })
       .catch(() => setLoading(false));
 
-    fetch("http://localhost:3001/api/summary")
+    fetch(
+      "https://territory-intelligence-production-1500.up.railway.app/api/summary",
+    )
       .then((res) => res.json())
       .then((data) => setSummary(data.summary));
   }, []);
