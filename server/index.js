@@ -1,3 +1,4 @@
+import rateLimit from "express-rate-limit";
 import express from "express";
 import cors from "cors";
 import "dotenv/config";
@@ -24,6 +25,14 @@ const PORT = 3001;
 
 app.use(cors());
 app.use(express.json());
+
+const summaryLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // max 10 requests per hour per IP
+  message: { error: "Too many requests, please try again later." },
+});
+
+app.use("/api/summary", summaryLimiter);
 
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, message: "Territory Intelligence API is running" });
