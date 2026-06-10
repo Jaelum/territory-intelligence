@@ -82,13 +82,14 @@ function ScoreBar({ score }) {
   );
 }
 
-function KPICard({ label, value, delta, deltaType }) {
+function KPICard({ label, value, delta, deltaType, onClick }) {
   const deltaColor =
     { up: "#7bc142", down: "#e24b4a", warn: "#ef9f27" }[deltaType] || "#666";
   const accentColor =
     { up: "#7bc142", down: "#e24b4a", warn: "#ef9f27" }[deltaType] || "#185FA5";
   return (
     <div
+      onClick={onClick}
       style={{
         background: "#161616",
         border: "1px solid #1e1e1e",
@@ -96,6 +97,14 @@ function KPICard({ label, value, delta, deltaType }) {
         borderRadius: 12,
         padding: "16px 20px",
         flex: 1,
+        cursor: onClick ? "pointer" : "default",
+        transition: "border-color 0.15s",
+      }}
+      onMouseEnter={(e) => {
+        if (onClick) e.currentTarget.style.borderColor = accentColor;
+      }}
+      onMouseLeave={(e) => {
+        if (onClick) e.currentTarget.style.borderColor = "#1e1e1e";
       }}
     >
       <div
@@ -124,6 +133,150 @@ function KPICard({ label, value, delta, deltaType }) {
           {delta}
         </div>
       )}
+      {onClick && (
+        <div style={{ fontSize: 10, color: "#444", marginTop: 6 }}>
+          Click to view accounts →
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Modal({ title, accounts, onClose }) {
+  const fmt = (n) =>
+    "$" +
+    (n >= 1000000
+      ? (n / 1000000).toFixed(1) + "M"
+      : n >= 1000
+        ? (n / 1000).toFixed(0) + "k"
+        : Math.round(n));
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.7)",
+        zIndex: 100,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: "#161616",
+          border: "1px solid #2a2a2a",
+          borderRadius: 14,
+          padding: 24,
+          width: "90%",
+          maxWidth: 700,
+          maxHeight: "80vh",
+          overflow: "auto",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 16,
+          }}
+        >
+          <span style={{ fontSize: 14, fontWeight: 600, color: "#e0e0e0" }}>
+            {title}
+          </span>
+          <button
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#555",
+              fontSize: 18,
+              cursor: "pointer",
+            }}
+          >
+            ✕
+          </button>
+        </div>
+        <table
+          style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}
+        >
+          <thead>
+            <tr style={{ borderBottom: "1px solid #222" }}>
+              {[
+                "Account",
+                "Industry",
+                "ARR",
+                "Health",
+                "Risk Score",
+                "Action",
+              ].map((h) => (
+                <th
+                  key={h}
+                  style={{
+                    padding: "6px 10px",
+                    textAlign: "left",
+                    fontSize: 10,
+                    color: "#444",
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {accounts.map((a) => (
+              <tr key={a.id} style={{ borderBottom: "1px solid #1c1c1c" }}>
+                <td
+                  style={{
+                    padding: "10px 10px",
+                    fontWeight: 500,
+                    color: "#e0e0e0",
+                  }}
+                >
+                  {a.name}
+                </td>
+                <td style={{ padding: "10px 10px", color: "#777" }}>
+                  {a.industry}
+                </td>
+                <td
+                  style={{
+                    padding: "10px 10px",
+                    color: "#ccc",
+                    fontWeight: 500,
+                  }}
+                >
+                  {a.customerMetrics ? fmt(a.customerMetrics.arr) : "—"}
+                </td>
+                <td style={{ padding: "10px 10px" }}>
+                  <HealthBadge health={a.customerMetrics?.accountHealth} />
+                </td>
+                <td style={{ padding: "10px 10px" }}>
+                  <ScoreBar score={a.customerMetrics?.renewalRiskScore} />
+                </td>
+                <td
+                  style={{
+                    padding: "10px 10px",
+                    fontSize: 11,
+                    color: "#4d9de0",
+                  }}
+                >
+                  {a.customerMetrics?.renewalRiskScore > 70
+                    ? "Begin renewal-risk plan"
+                    : a.customerMetrics?.healthScore < 30
+                      ? "Schedule EBR"
+                      : "Monitor closely"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -163,6 +316,7 @@ function Card({ title, subtitle, children }) {
 // ── PAGES ──────────────────────────────────────────────────────────────────
 
 function OverviewPage({ accounts, summary }) {
+  const [modal, setModal] = useState(null);
   const customers = accounts.filter((a) => a.type === "customer");
   const prospects = accounts.filter((a) => a.type === "prospect");
   const totalARR = customers.reduce(
@@ -187,6 +341,14 @@ function OverviewPage({ accounts, summary }) {
   const stalledCount = prospects.filter(
     (a) => a.prospectMetrics?.isStalled,
   ).length;
+
+  const expansionAccounts = customers.filter(
+    (a) => (a.customerMetrics?.expansionScore || 0) > 60,
+  );
+  const expansionValue = expansionAccounts.reduce(
+    (s, a) => s + (a.customerMetrics?.arr || 0) * 0.3,
+    0,
+  );
 
   const industryARR = {};
   customers.forEach((a) => {
@@ -239,23 +401,78 @@ function OverviewPage({ accounts, summary }) {
           value={fmt(totalARR)}
           delta="↑ 12% YoY"
           deltaType="up"
+          onClick={() =>
+            setModal({
+              title: "All Customers by ARR",
+              accounts: customers.sort(
+                (a, b) =>
+                  (b.customerMetrics?.arr || 0) - (a.customerMetrics?.arr || 0),
+              ),
+            })
+          }
         />
         <KPICard
           label="Revenue at Risk"
           value={fmt(atRiskARR)}
           delta={`${atRiskCount} accounts`}
           deltaType="down"
+          onClick={() =>
+            setModal({
+              title: "Revenue at Risk — At Risk Accounts",
+              accounts: customers
+                .filter((a) => a.customerMetrics?.accountHealth === "at_risk")
+                .sort((a, b) => b.customerMetrics.arr - a.customerMetrics.arr),
+            })
+          }
         />
         <KPICard
           label="Customers"
           value={customers.length}
           delta={`${healthyCount} healthy · ${atRiskCount} at risk`}
+          onClick={() =>
+            setModal({
+              title: "All Customers",
+              accounts: customers.sort(
+                (a, b) =>
+                  (b.customerMetrics?.healthScore || 0) -
+                  (a.customerMetrics?.healthScore || 0),
+              ),
+            })
+          }
         />
         <KPICard
           label="Prospects"
           value={prospects.length}
           delta={`${stalledCount} stalled`}
           deltaType={stalledCount > 10 ? "warn" : null}
+          onClick={() =>
+            setModal({
+              title: "Stalled Prospects",
+              accounts: prospects
+                .filter((a) => a.prospectMetrics?.isStalled)
+                .sort(
+                  (a, b) =>
+                    (b.prospectMetrics?.opportunityValue || 0) -
+                    (a.prospectMetrics?.opportunityValue || 0),
+                ),
+            })
+          }
+        />
+        <KPICard
+          label="Expansion Opportunity"
+          value={fmt(expansionValue)}
+          delta={`${expansionAccounts.length} accounts ready`}
+          deltaType="up"
+          onClick={() =>
+            setModal({
+              title: "Expansion Opportunities",
+              accounts: expansionAccounts.sort(
+                (a, b) =>
+                  b.customerMetrics.expansionScore -
+                  a.customerMetrics.expansionScore,
+              ),
+            })
+          }
         />
       </div>
 
@@ -439,6 +656,13 @@ function OverviewPage({ accounts, summary }) {
           </p>
         </div>
       </Card>
+      {modal && (
+        <Modal
+          title={modal.title}
+          accounts={modal.accounts}
+          onClose={() => setModal(null)}
+        />
+      )}
     </div>
   );
 }
